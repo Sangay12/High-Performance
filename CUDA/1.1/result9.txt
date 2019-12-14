@@ -1,0 +1,1 @@
+Time elapsed was 5611506ns or 0.005611506s
