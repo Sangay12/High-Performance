@@ -1,0 +1,2 @@
+minimum m,c is 1.100000, 29.830000 with error 10.427029
+TIme elasped: 183920425nsec or 0.183920425sec
