@@ -17,7 +17,7 @@
  * To run:
  *   mpirun -n 9 ./linearmpi
  * 
- * Dr Kevan Buckley, University of Wolverhampton, 2018
+ * Dr Kevan Buckley, University of Wolverhampton, 2019
  *****************************************************************************/
 
 typedef struct point_t {

@@ -15,7 +15,7 @@ mpicc -o Pswmpi Pswmpi.c -lcrypt (to compile)
 mpirun -n 3 ./Pswmpi(to run)If you want to analyse the results then use the redirection operator to send output to
 a file that you can view using an editor or the less utility:
 ./Pswmpi> mpiresults.txt
-Dr Kevan Buckley, University of Wolverhampton, 2018
+Dr Kevan Buckley, University of Wolverhampton, 2019
 ******************************************************************************/
 int number_of_passwords = 4;
 char *enc_passwords[] = {

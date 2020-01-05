@@ -5,203 +5,12 @@
 #include <GL/gl.h>
 #include <malloc.h>
 #include <signal.h>
-#include <mpi.h>
-#include <time.h>
-/******************************************************************************
-  Displays two grey scale images. On the left is an image that has come from an
-  image processing pipeline, just after colour thresholding. On the right is
-  the result of applying an edge detection convolution operator to the left
-  image. This program performs that convolution.
-   
-  Things to note:
-	- A single unsigned char stores a pixel intensity value. 0 is black, 256 is
-  	white.
-	- The colour mode used is GL_LUMINANCE. This uses a single number to
-  	represent a pixel's intensity. In this case we want 256 shades of grey,
-  	which is best stored in eight bits, so GL_UNSIGNED_BYTE is specified as
-  	the pixel data type.
-
-    
-  To compile adapt the code below wo match your filenames:  
-	mpicc -o imgmpi imgmpi.c -lglut -lGL -lm -lcrypt
-
-	mpirun -n 5  -quiet ./imgmpi
-   
-  Dr Kevan Buckley, University of Wolverhampton, 2019
-******************************************************************************/
+#include <cuda_runtime_api.h>
 #define width 100
 #define height 72
+unsigned char results[width * height];
 
-unsigned char image_data[], process_results[width * height];
-int sIndex, lIndex;
-
-int time_difference(struct timespec *start,
-                	struct timespec *finish,
-                	long long int *difference) {
-  long long int ds =  finish->tv_sec - start->tv_sec;
-  long long int dn =  finish->tv_nsec - start->tv_nsec;
-
-  if(dn < 0 ) {
-	ds--;
-	dn += 1000000000;
-  }
-  *difference = ds * 1000000000 + dn;
-  return !(*difference > 0);
-}
-
-void detect_edges(unsigned char *in, unsigned char *out) {
-  int l;
-  int no_of_pixels = (width * height);
-
-  for(l=0;l<no_of_pixels;l++) {
-	int s, t; // the pixel of interest
-	int b, d, f, h; // the pixels adjacent to s,t used for the calculation
-	int r; // the result of calculate
-    
-	s = l / width;
-	h = l - (width * t);
-
-	if (s == 0 || t == 0 || s == width - 1 || t == height - 1) {
-  	process_results[l] = 0;
-	} else {
-  	b = l + width;
-  	d = l - 1;
-  	f = l + 1;
-  	h = l - width;
-
-  	r = (in[l] * 4) + (in[b] * -1) + (in[d] * -1) + (in[f] * -1)
-      	+ (in[h] * -1);
-
-  	if (r > 0) { // if the result is positive this is an edge pixel
-    	out[l] = 255;
-  	} else {
-    	out[l] = 0;
-  	}
-	}
-  }
-}
-
-void tidy_and_exit() {
-  exit(0);
-}
-
-void sigint_callback(int signal_number){
-  printf("\nInterrupt from keyboard\n");
-  tidy_and_exit();
-}
-
-static void display() {
-  glClear(GL_COLOR_BUFFER_BIT);
-  glRasterPos4i(-1, -1, 0, 1);
-  glDrawPixels(width, height, GL_LUMINANCE, GL_UNSIGNED_BYTE, image_data);
-  glRasterPos4i(0, -1, 0, 1);
-  glDrawPixels(width, height, GL_LUMINANCE, GL_UNSIGNED_BYTE, process_results);
-  glFlush();
-}
-
-static void key_pressed(unsigned char key, int x, int y) {
-  switch(key){
-	case 27: // escape
-  	tidy_and_exit();
-  	break;
-	default:
-  	printf("\nPress escape to exit\n");
-  	break;
-  }
-}
-
-int main(int argc, char **argv) {
-  signal(SIGINT, sigint_callback);
-  // printf("image dimensions %dx%d\n", width, height);
-  // struct timespec start, finish;
-  // long long int difference;   
-  int account = 0;
- 
-  int size, rank;
-  // clock_gettime(CLOCK_MONOTONIC, &start);
-  MPI_Init(NULL, NULL);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  if(size != 5) {
-	if(rank == 0) {
-  	printf("This program needs 5 processes\n");
-	}
-  } else {
-	if(rank ==0){
-     	struct timespec start, finish;
-   	long long int difference;  
-   	clock_gettime(CLOCK_MONOTONIC, &start);
-   	  	MPI_Send(&process_results[0], 1800, MPI_UNSIGNED_CHAR, 1, 0, MPI_COMM_WORLD);
-     	MPI_Send(&process_results[1800], 1800, MPI_UNSIGNED_CHAR, 2, 0, MPI_COMM_WORLD);
-     	MPI_Send(&process_results[3600], 1800, MPI_UNSIGNED_CHAR, 3, 0, MPI_COMM_WORLD);
-     	MPI_Send(&process_results[5400], 1800, MPI_UNSIGNED_CHAR, 4, 0, MPI_COMM_WORLD);
-   	 
-     	MPI_Recv(&process_results[0], 1800, MPI_UNSIGNED_CHAR, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);  
-  		  	MPI_Recv(&process_results[1800], 1800,MPI_UNSIGNED_CHAR, 2, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-     	MPI_Recv(&process_results[3600], 1800,MPI_UNSIGNED_CHAR, 3, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-     	MPI_Recv(&process_results[5400], 1800,MPI_UNSIGNED_CHAR, 4, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
- 	 
-  		  	clock_gettime(CLOCK_MONOTONIC, &finish);
-         	time_difference(&start, &finish, &difference);
-         	printf("run lasted %9.5lfs\n", difference/1000000000.0);
-         	glutInit(&argc, argv);
-         	glutInitWindowSize(width * 2,height);
-         	glutInitDisplayMode(GLUT_SINGLE | GLUT_LUMINANCE);
- 	 
-         	glutCreateWindow("6CS005 Image Progessing Courework");
-         	glutDisplayFunc(display);
-         	glutKeyboardFunc(key_pressed);
-  		  	glClearColor(0.0, 1.0, 0.0, 1.0);
-
-  		  	glutMainLoop();
-
-  		  	tidy_and_exit();
-  	 
-    
-	} else {
-  	if(rank == 1){
-    
-     	sIndex = 0;
-      	lIndex = 1799;
-      	MPI_Recv(&process_results[0], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      	detect_edges(image_data, process_results);
- 		   	MPI_Send(&process_results[0], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-  	}
-    else if(rank == 2){
-      	sIndex = 1800;
-      	lIndex = 3599;
-   	 
- 		   	MPI_Recv(&process_results[1800], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      	detect_edges(image_data, process_results);
- 		   	MPI_Send(&process_results[1800], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-    }
-    else if(rank == 3){
-   	 sIndex = 3600;
-   	 lIndex = 5399;
- 
-   	 MPI_Recv(&process_results[3600], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-   	 detect_edges(image_data, process_results);
- 			 MPI_Send(&process_results[3600], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-   	    
-    }
-    else if(rank == 4){
-     	 sIndex = 5400;
-     	 lIndex = 7199;
-    
-     	 MPI_Recv(&process_results[5400], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-   	 detect_edges(image_data, process_results);
- 			 MPI_Send(&process_results[5400], 1800, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-    }
-	}
-  }
-  MPI_Finalize();
-  // clock_gettime(CLOCK_MONOTONIC, &finish);
-  // time_difference(&start, &finish, &difference);
-  // printf("run lasted %9.5lfs\n", difference/1000000000.0);
-  return 0;
-}
-
-unsigned char image_data[] ={
+unsigned char image[] = {
 
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -582,4 +391,99 @@ unsigned char image_data[] ={
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
   0,0,0,255,255,255,255,255,0,0,0,0,0,0,255,255,255,255,0
+
 };
+
+__global__ void detect_edges(unsigned char *input, unsigned char *output) {
+int i = (blockIdx.x * 72) + threadIdx.x;
+int x, y; // the pixel of interest
+int b, d, f, h; // the pixels adjacent used for the calculation
+int r; // the result 
+y = i / width;;
+x = i - (width * y);
+if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
+output[i] = 0;
+} else {
+b = i + width;
+d = i - 1;
+f = i + 1;
+h = i - width;
+r = (input[i] * 4) + (input[b] * -1) + (input[d] * -1) + (input[f] * -1)
++ (input[h] * -1);
+if (r >= 0) {
+output[i] = 255;
+} else {
+output[i] = 0;
+}
+}
+}
+void tidy_and_exit() {
+exit(0);
+}
+void sigint_callback(int signal_number){printf("\nInterrupt from keyboard\n");
+tidy_and_exit();
+}
+static void display() {
+glClear(GL_COLOR_BUFFER_BIT);
+glRasterPos4i(-1, -1, 0, 1);
+glDrawPixels(width, height, GL_LUMINANCE, GL_UNSIGNED_BYTE, image);
+glRasterPos4i(0, -1, 0, 1);
+glDrawPixels(width, height, GL_LUMINANCE, GL_UNSIGNED_BYTE, results);
+glFlush();
+}
+static void key_pressed(unsigned char key, int x, int y) {
+switch(key){
+case 27: // escape
+tidy_and_exit();
+break;
+default:
+printf("\nPress escape to exit\n");
+break;
+}
+}
+int time_difference(struct timespec *start, struct timespec *finish,
+long long int *difference) {
+long long int ds = finish->tv_sec - start->tv_sec;
+long long int dn = finish->tv_nsec - start->tv_nsec;
+if(dn < 0 ) {
+ds--;
+dn += 1000000000;
+}
+*difference = ds * 1000000000 + dn;
+return !(*difference > 0);
+}
+int main(int argc, char **argv) {
+	//cudaMalloc((void **)&d_results, sizeof(char));
+	//cudaMemcpy(&results, d_results,sizeof(char), cudaMemcpyHostToDevice);
+	unsigned char *d_results;
+	unsigned char *d_image;cudaMalloc((void**)&d_image, sizeof(unsigned char) * (width * height));
+	cudaMalloc((void**)&d_results, sizeof(unsigned char) * (width * height));
+	cudaMemcpy(d_image, &image, sizeof(unsigned char) * (width * height),
+	cudaMemcpyHostToDevice);
+	signal(SIGINT, sigint_callback);
+	struct timespec start, finish;
+	long long int time_elapsed;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	//printf("image dimensions %dx%d\n", width, height);
+	detect_edges<<<100,72>>>(d_image, d_results);
+	cudaThreadSynchronize();
+	cudaMemcpy(&results, d_results, sizeof(unsigned char) * (width * height),
+	cudaMemcpyDeviceToHost);
+	clock_gettime(CLOCK_MONOTONIC, &finish);
+	time_difference(&start, &finish, &time_elapsed);
+	printf("Time elapsed was %lldns or %0.9lfs\n", time_elapsed,
+	(time_elapsed/1.0e9));
+	cudaFree(&d_image);
+	cudaFree(&d_results);
+	glutInit(&argc, argv);
+	glutInitWindowSize(width * 2,height);
+	glutInitDisplayMode(GLUT_SINGLE | GLUT_LUMINANCE);
+	glutCreateWindow("Cuda Image Processing High Performance Computing");
+	glutDisplayFunc(display);
+	glutKeyboardFunc(key_pressed);
+	glClearColor(0.0, 1.0, 0.0, 1.0);
+	glutMainLoop();
+	tidy_and_exit();
+	return 0;
+}
+
